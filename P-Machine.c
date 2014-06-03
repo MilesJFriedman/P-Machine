@@ -32,14 +32,14 @@ int main (int argc, char *argv[]) {
 	
 	intCount = countIntsInFile();
 	
-	printf("intCount: %d", intCount);
+	//printf("intCount: %d", intCount);
 	
 	return 0;
 }
 
 
 //Function Definitions:
-void fetchCycle () {
+void fetchCycle (instruction IR) {
 	
 }
 
