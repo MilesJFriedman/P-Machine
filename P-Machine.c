@@ -14,33 +14,67 @@ typedef struct {
 } instruction;
 
 
+//Declare a pointer to the array of instructions to be executed structs:
+//instruction *toBeExecuted;
+
+
 //Function Prototypes:
 int findBase (); //finds the base L levels down.
-void fetchCycle (); //fetches the instruction from the input file and stores it into the IR
-int countIntsInFile (); //counts the number of lines in the input file
+void fetchCycle (); //fetches the instruction from the input file and stores it into the IR.
+void printIRArray (); //prints the instruction register array that holds each instruction register.
+int countIntsInFile (); //counts the number of lines in the input file.
 
 
 int main (int argc, char *argv[]) {
 	int SP = 0; //stack pointer
 	int BP = 1; //base pointer
 	int PC = 0; //program counter
-	instruction IR; //instruction register
+	//instruction IR; //instruction register
 	int intCount = 0; //the number of ints contained within the file.
+	int instructionCount = 0; //the number of instructions that must be fetched and executed.
 		
 	//initialize each register in the register file to 0
 	int registerFile[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	
 	intCount = countIntsInFile();
+	instructionCount = intCount/4;
 	
-	//printf("intCount: %d", intCount);
+	//toBeExecuted = (instruction*)malloc(instructionCount*sizeof(instruction));
+	instruction IR[instructionCount];
+	
+	fetchCycle(IR, instructionCount);
+	printIRArray(IR, instructionCount);
+	//printf("intCount: %d \n", intCount);
+	//printf("instructionCount: %d \n", instructionCount);
 	
 	return 0;
 }
 
 
 //Function Definitions:
-void fetchCycle (instruction IR) {
+void fetchCycle (instruction *IR, int instructionCount) {
+	int i = 0;
+
+	//loop through each instruction in the input file storing each into the instruction register and then
+	//transfering to the toBeExecuted array.
+	for (i = 0; i < instructionCount; i++) {
+		scanf("%d", &IR[i].op);
+		scanf("%d", &IR[i].r);
+		scanf("%d", &IR[i].l);
+		scanf("%d", &IR[i].m);
+	}
+}
+
+void printIRArray (instruction *IR, int instructionCount) {
+	int i = 0;
 	
+	for (i = 0; i < instructionCount; i++) {
+		printf("%d ", IR[i].op);
+		printf("%d ", IR[i].r);
+		printf("%d ", IR[i].l);
+		printf("%d ", IR[i].m);
+		printf("\n");
+	}
 }
 
 /*int findBase (l, base) { //l stands for L in the instruction format.
