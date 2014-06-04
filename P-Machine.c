@@ -20,6 +20,7 @@ typedef struct {
 
 //Function Prototypes:
 int findBase (); //finds the base L levels down.
+void executeCycle (); //executes every direction in the IR array.
 void fetchCycle (); //fetches the instruction from the input file and stores it into the IR.
 void printIRArray (); //prints the instruction register array that holds each instruction register.
 int countIntsInFile (); //counts the number of lines in the input file.
@@ -33,6 +34,9 @@ int main (int argc, char *argv[]) {
 	int intCount = 0; //the number of ints contained within the file.
 	int instructionCount = 0; //the number of instructions that must be fetched and executed.
 		
+	//create and initialize the stack
+	int stack[MAX_STACK_HEIGHT] = {0};
+	
 	//initialize each register in the register file to 0
 	int registerFile[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	
@@ -40,10 +44,13 @@ int main (int argc, char *argv[]) {
 	instructionCount = intCount/4;
 	
 	//toBeExecuted = (instruction*)malloc(instructionCount*sizeof(instruction));
+	//create the instruction register array
 	instruction IR[instructionCount];
 	
+	//fetches the instruction from the input file
 	fetchCycle(IR, instructionCount);
 	printIRArray(IR, instructionCount);
+	
 	//printf("intCount: %d \n", intCount);
 	//printf("instructionCount: %d \n", instructionCount);
 	
@@ -52,6 +59,95 @@ int main (int argc, char *argv[]) {
 
 
 //Function Definitions:
+void executeCycle (instruction *IR, int instructionCount, registerFile, stack) {
+	int halt = 0;
+	int i = 0;
+	for (i = 0; i < instructionCount; i++) {
+		switch (IR[i].op) {
+			//LIT R, 0, M
+			case 1: registerFile[IR[i].r] = IR[i].m;
+					break
+			//RTN 0, 0, 0
+			case 2: SP = BP - 1;
+					BP = stack[SP + 3];
+					PC = stack[SP + 4];
+					break;
+			//LOD R, L, M
+			case 3: registerFile[IR[i].r] = stack[base(IR[i].l, BP) + IR[i].m];
+					break;
+			//STO R, L, M
+			case 4: stack[base(IR[i].l, BP) + IR[i].m] = registerFile[IR[i].r];
+					break;
+			//CAL 0, L, M
+			case 5: stack[SP + 1] = 0;						//space to return value
+					stack[SP + 2] = base(IR[i].l, BP);		//static link (SL)
+					stack[SP + 3] = BP;						//dynamic link (DL)
+					stack[SP + 4] = PC;						//return address (RA)
+					BP = SP + 1;
+					PC = IR[i].m;
+					break;
+			//INC 0, 0, M
+			case 6: SP = SP + IR[i].m;
+					break;
+			//JMP 0, 0, M
+			case 7: PC = IR[i].m;
+					break;
+			//JPC R, 0, M
+			case 8: if (registerFile[IR[i].r] == 0)
+						PC = IR[i].m;
+					break;
+			//SIO R, 0, 1
+			case 9: printf("%d", IR[i].r);
+					break;
+			//SIO R, 0, 2
+			case 10: scanf("%d", registerFile[IR[i].r]);
+					 break;
+			//SIO R, 0, 3
+			case 11: halt = 1;
+					 break;
+			//NEG
+			case 12: registerFile[IR[i].r] = registerFile[IR[i].l];
+					 break;
+			//ADD
+			case 13: registerFile[IR[i].r] = registerFile[IR[i].l] + registerFile[IR[i].m];
+					 break;
+			//SUB
+			case 14: registerFile[IR[i].r] = registerFile[IR[i].l] - registerFile[IR[i].m];
+					 break;
+			//MUL
+			case 15: registerFile[IR[i].r] = registerFile[IR[i].l] * registerFile[IR[i].m]; 
+					 break;
+			//DIV
+			case 16: registerFile[IR[i].r] = registerFile[IR[i].l] / registerFile[IR[i].m];
+					 break;
+			//ODD
+			case 17: registerFile[IR[i].r] = (registerFile[IR[i].r] % 2);
+					 break;
+			//MOD
+			case 18: registerFile[IR[i].r] = registerFile[IR[i].l] % registerFile[IR[i].m];
+					 break;
+			//EQL
+			case 19: registerFile[IR[i].r] = (registerFile[IR[i].l] == registerFile[IR[i].m];
+					 break;
+			//NEQ
+			case 20: registerFile[IR[i].r] = (registerFile[IR[i].l] != registerFile[IR[i].m];
+					 break;
+			//LSS
+			case 21: registerFile[IR[i].r] = (registerFile[IR[i].l] < registerFile[IR[i].m];
+					 break;
+			//LEQ
+			case 22: registerFile[IR[i].r] = (registerFile[IR[i].l] <= registerFile[IR[i].m];
+					 break;
+			//GTR
+			case 23:  registerFile[IR[i].r] = (registerFile[IR[i].l] > registerFile[IR[i].m];
+					 break;
+			//GEO
+			case 24: registerFile[IR[i].r] = (registerFile[IR[i].l] >= registerFile[IR[i].m];
+					 break;
+		}
+	}
+}
+
 void fetchCycle (instruction *IR, int instructionCount) {
 	int i = 0;
 
@@ -77,7 +173,7 @@ void printIRArray (instruction *IR, int instructionCount) {
 	}
 }
 
-/*int findBase (l, base) { //l stands for L in the instruction format.
+int findBase (l, base) {} //l stands for L in the instruction format
 	int b1; //find base L levels down
 	b1 = base;
 	while (1 > 0) {
@@ -85,7 +181,7 @@ void printIRArray (instruction *IR, int instructionCount) {
 		l--;
 	}
 	return b1;
-}*/
+}
 
 int countIntsInFile () {
 	char integer[2];
