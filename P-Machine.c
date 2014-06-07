@@ -62,8 +62,8 @@ int main (int argc, char *argv[]) {
 	char opCodeString[3]; //a string representing the instruction that corresponds to the opCode.
 	displayAssemblyInstructions(IR, instructionCount);
 	
-	//printf("\n\nInitial Values PC BP SP \n");
-	//executeCycle (IR, instructionCount, registerFile);
+	printf("\n\nInitial Values PC BP SP \n");
+	executeCycle (IR, instructionCount, registerFile, opCodeString);
 	
 	//printf("intCount: %d \n", intCount);
 	//printf("instructionCount: %d \n", instructionCount);
@@ -159,7 +159,7 @@ void displayAssemblyInstructions (instruction *IR, int instructionCount, char *o
 	}
 }
 
-void executeCycle (instruction *IR, int instructionCount, int *registerFile) {
+void executeCycle (instruction *IR, int instructionCount, int *registerFile, char *opCodeString) {
 	int halt = 0;
 	int i = 0;
 	for (i = 0; i < instructionCount; i++) {
@@ -246,8 +246,8 @@ void executeCycle (instruction *IR, int instructionCount, int *registerFile) {
 					 break;
 		}
 		
-		//setAssemblyInstructions
-		//printf("%d %s %d %d %d %d %d %d | %d %d %d %d %d %d \n", i, opCodeString, IR[i].r, IR[i].l, IR[i].m, PC, BP, SP, stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
+		setAssemblyInstructions (IR, instructionCount, opCodeString, i);
+		printf("%d %s %d %d %d %d %d %d | %d %d %d %d %d %d \n", i, opCodeString, IR[i].r, IR[i].l, IR[i].m, PC, BP, SP, stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
 	}
 }
 
