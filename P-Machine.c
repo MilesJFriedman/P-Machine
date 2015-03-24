@@ -1,289 +1,298 @@
+// Miles Friedman
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define MAX_STACK_HEIGHT 2000
-#define MAX_CODE_LENGTH 500
-#define MAX_LEXI_LEVELS 3
-
 
 typedef struct {
 	int op; //opcode
-	int r; //register
 	int l; //L
 	int m; //M
-} instruction;
+	char opString[3]; //the string that corresponds with the opcode;
+	int instructionNum; //the implicit instructions number (in the order it was given to you in mcode.txt)
+}instruction;
+
+//function prototypes:
+int base (int l, int base);
+int countIntsInFile ();
+void executeStep (instruction IR, int *endFlag, FILE *outfile, int *newARFlag, int *whereToPlace);
+void fetchStep (instruction *IRTrace, instruction *IR);
+void fillOPStrings (instruction *IRTrace, int i);
+
+//declare global variables:
+int SP = -1;
+int BP = 0;
+int PC = 0;
+int stack[2000] = {0};
 
 
-//Declare a pointer to the array of instructions to be executed structs:
-//instruction *toBeExecuted;
-
-
-//Function Prototypes:
-int findBase (); //finds the base L levels down.
-void executeCycle (); //executes every direction in the IR array.
-void fetchCycle (); //fetches the instruction from the input file and stores it into the IR.
-void printIRArray (); //prints the instruction register array that holds each instruction register.
-int countIntsInFile (); //counts the number of lines in the input file.
-void displayAssemblyInstructions (); //displays the instructions as assembly
-void setAssemblyInstructions (); //sets the assembly instructions
-
-
-int SP = 0; //stack pointer
-int BP = 1; //base pointer
-int PC = 0; //program counter
-//create and initialize the stack
-int stack[MAX_STACK_HEIGHT] = {0};
-
-
-int main (int argc, char *argv[]) {
-
-	//instruction IR; //instruction register
-	int intCount = 0; //the number of ints contained within the file.
-	int instructionCount = 0; //the number of instructions that must be fetched and executed.
+int main (int argc, char* argv[]) {
+	int intsInFile = 0; //the number of integers in the input file (mcode.txt)
+	int instructionCount = 0; //the number of instructions in the input file
+	int newARFlag = 0; //indicates whether a new activation record is made for purposes of adding a new bracket '|' to the stackTrace.txt file
+	int endFlag = 0; //a flag used to tell the VM to terminate if RET is hit and SP = -1
 	
-	//initialize each register in the register file to 0
-	int registerFile[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	//The array below contains the index of each bracket in the order they appear within the stack. Because the stack can only be 2000 large, and each activation record has a minimum
+	//of 3 indices, (static link, dynamic link, return address) the largest amount of brackets (or new activation records possible) would be 2000/3 or 667
+	int whereToPlace[667] = {0};
 	
-	intCount = countIntsInFile();
-	instructionCount = intCount/4;
+	intsInFile = countIntsInFile();
+	instructionCount = intsInFile / 3; //There are 3 integer values per instruction, use this fact to determine the instruction count
 	
-	//toBeExecuted = (instruction*)malloc(instructionCount*sizeof(instruction));
-	//create the instruction register array
-	instruction IR[instructionCount];
+	instruction IR; //The instruction register will hold the next instruction to be executed
+	instruction *IRpointer = &IR; //pointer to IR so that the fetch cycle may update the instruction register
+	instruction IRTrace[instructionCount]; //this array will hold each instruction in the mcode.txt file in the order given
 	
-	//fetches the instruction from the input file
-	fetchCycle(IR, instructionCount);
-	//printIRArray(IR, instructionCount);
+	printf("Output: ");
 	
-	//print out the header for the assembly that will be printed after each instruction is read in during the
-	//fetch cycle.
-	printf("Line OP R L M \n");
+	//open the input and output files:
+	FILE *infile;
+	FILE *outfile;
+	infile = fopen("C:\\Users\\Miles\\Desktop\\P-MACHINE\\HW1\\mcode.txt", "r");
+	outfile = fopen("C:\\Users\\Miles\\Desktop\\P-MACHINE\\HW1\\stacktrace.txt", "w");
 	
-	char opCodeString[3]; //a string representing the instruction that corresponds to the opCode.
-	displayAssemblyInstructions(IR, instructionCount);
+	//error check for the input file
+	if (!infile)
+		printf("Error, unable to read the file...");
+	if (!outfile)
+		printf("Error, unable to read the file...");
 	
-	printf("\n\nInitial Values PC BP SP \n");
-	executeCycle (IR, instructionCount, registerFile, opCodeString);
+	//--------------------------------------------FILL INSTRUCTION TRACE-------------------------------------------------------------------//
+	int i = 0; //looping variable
+	for (i = 0; i < instructionCount; i++) {
+		//Place all ISA from mcode.txt into the array of instructions (IRTrace):
+		fscanf(infile, "%d %d %d", &IRTrace[i].op, &IRTrace[i].l, &IRTrace[i].m);
+		
+		//fill in the corresponding opString for each code and the current instruction number of the current instruction:
+		fillOPStrings(IRTrace, i);
+		IRTrace[i].instructionNum = i;
+	}
 	
-	//printf("intCount: %d \n", intCount);
-	//printf("instructionCount: %d \n", instructionCount);
+	//--------------------------------------------PRINT INSTRUCTION TRACE-----------------------------------------------------------------//
+	fprintf(outfile, "Line OP   L   M \n"); //print out the header for the assembly instruction trace that will be printed in stackTrace.txt:
+	for (i = 0; i < instructionCount; i++) { //for each instruction, print out the current iteration of the instruction trace:
+		fprintf(outfile, "%-4d %-4s %-3d %-3d \n", IRTrace[i].instructionNum, IRTrace[i].opString, IRTrace[i].l, IRTrace[i].m);
+	}
+	fprintf(outfile, "\n");
 	
+	fprintf(outfile, "                     pc    bp    sp    stack\n"); //print out the header for the stack trace that will be printed in stackTrace.txt:
+	fprintf(outfile, "Initial Values       0     0     -1\n");
+	while (endFlag == 0) {
+		//---------------------------------------------------FETCH STEP-----------------------------------------------------------------------//
+		fetchStep(IRTrace, IRpointer);
+		PC++;
+		//--------------------------------------------------EXECUTE STEP----------------------------------------------------------------------//
+		executeStep(IR, &endFlag, outfile, &newARFlag, whereToPlace);
+	}
+	
+	fclose(infile);
+	fclose(outfile);
 	return 0;
 }
 
-
-//Function Definitions:
-void setAssemblyInstructions (instruction *IR, int instructionCount, char *opCodeString, int i) {
-		//this switch fills the opCodeString
-		switch (IR[i].op) {
-			case 1: //opCodeString = "LIT";
-					strcpy(opCodeString, "LIT");
-					break;
-			case 2: //opCodeString = "RTN";
-					strcpy(opCodeString, "RTN");
-					break;
-			case 3: //opCodeString = "LOD";
-					strcpy(opCodeString, "LOD");
-					break;
-			case 4: //opCodeString = "STO";
-					strcpy(opCodeString, "STO");
-					break;
-			case 5: //opCodeString = "CAL";
-					strcpy(opCodeString, "CAL");
-					break;
-			case 6: //opCodeString = "INC";
-					strcpy(opCodeString, "INC");
-					break;
-			case 7: //opCodeString = "JMP";
-					strcpy(opCodeString, "JMP");
-					break;
-			case 8: //opCodeString = "JPC";
-					strcpy(opCodeString, "JPC");
-					break;
-			case 9: //opCodeString = "SIO";
-					strcpy(opCodeString, "SIO");
-					break;
-			case 10: //opCodeString = "SIO";
-					 strcpy(opCodeString, "SIO");
-					 break;
-			case 11: //opCodeString = "SIO";
-					 strcpy(opCodeString, "SIO");
-					 break;
-			case 12: //opCodeString = "NEG";
-					 strcpy(opCodeString, "NEG");
-					 break;
-			case 13: //opCodeString = "ADD";
-					 strcpy(opCodeString, "ADD");
-					 break;
-			case 14: //opCodeString = "SUB";
-					 strcpy(opCodeString, "SUB");
-					 break;
-			case 15: //opCodeString = "MUL";
-					 strcpy(opCodeString, "MUL");
-					 break;
-			case 16: //opCodeString = "DIV";
-					 strcpy(opCodeString, "DIV");
-					 break;
-			case 17: //opCodeString = "ODD";
-					 strcpy(opCodeString, "ODD");
-					 break;
-			case 18: //opCodeString = "MOD";
-					 strcpy(opCodeString, "MOD");
-					 break;
-			case 19: //opCodeString = "EQL";
-					 strcpy(opCodeString, "EQL");
-					 break;
-			case 20: //opCodeString = "NEQ";
-					 strcpy(opCodeString, "NEQ");
-					 break;
-			case 21: //opCodeString = "LSS";
-					 strcpy(opCodeString, "LSS");
-					 break;
-			case 22: //opCodeString = "LEQ";
-					 strcpy(opCodeString, "LEQ");
-					 break;
-			case 23: //opCodeString = "GTR";
-					 strcpy(opCodeString, "GTR");
-					 break;
-			case 24: //opCodeString = "GEQ";
-					 strcpy(opCodeString, "GEQ");
-					 break;
-		}
-}
-
-void displayAssemblyInstructions (instruction *IR, int instructionCount, char *opCodeString) {	
-	int i = 0;
-	for (i = 0; i < instructionCount; i++) {
-		setAssemblyInstructions (IR, instructionCount, opCodeString, i);
-		printf("%d %s %d %d %d \n", i, opCodeString, IR[i].r, IR[i].l, IR[i].m);
+//function definitions:
+void executeStep (instruction IR, int *endFlag, FILE *outfile, int *newARFlag, int *whereToPlace) {
+	int j = 0; //looping variable
+	//Specifies how the program handles the ISA from the input file
+	switch (IR.op) {
+		case 1: //opCodeString = "LIT";
+				SP++;
+				stack[SP] = IR.m;
+				break;
+		case 2: //handles OPR and its possible ISA;
+				switch (IR.m) { 
+					case 0: //operation RET 
+							SP = BP - 1;
+							if (SP == -1) {
+								*endFlag = 1;
+							}
+							PC = stack[SP+3];
+							BP = stack[SP+2];
+							//because RET pops the current activation record off of the stack, there is one less bracket that needs to be displayed on the stack. Update the
+							//whereToPlace array to reflect this by setting the furthest index that is not 0 back to 0.
+							for (j = 667; j > 0; j--) {
+								if (whereToPlace[j] != 0) {
+									whereToPlace[j] == 0;
+									break;
+								}
+							}
+							break;
+					case 1:	//operation NEG
+							stack[SP] = -1*stack[SP];
+							break;
+					case 2: //operation ADD
+							SP--;
+							stack[SP] = stack[SP] + stack[SP+1];
+							break;
+					case 3: //operation SUB
+							SP--;
+							stack[SP] = stack[SP] - stack[SP+1];
+							break;
+					case 4: //operation MUL
+							SP--;
+							stack[SP] = stack[SP] * stack[SP+1];
+							break;
+					case 5: //operation DIV
+							SP--;
+							stack[SP] = stack[SP] / stack[SP+1];
+							break;
+					case 6: //operation ODD
+							stack[SP] = stack[SP] % 2;
+							break;
+					case 7: //operation MOD
+							SP--;
+							stack[SP] = stack[SP] % stack[SP+1];
+							break;
+					case 8: //operation EQL
+							SP--;
+							if (stack[SP] == stack[SP+1])
+								stack[SP] = 1;
+							else
+								stack[SP] = 0;
+							break;
+					case 9: //operation NEQ
+							SP--;
+							if (stack[SP] != stack[SP+1])
+								stack[SP] = 1;
+							else
+								stack[SP] = 0;
+							break;
+					case 10: //operation LSS
+							 SP--;
+							 if (stack[SP] < stack[SP+1])
+							 	stack[SP] = 1;
+							 else
+								stack[SP] = 0;
+							 break;
+					case 11: //operation LEQ
+							 SP--;
+							 if (stack[SP] <= stack[SP+1])
+								stack[SP] = 1;
+							 else
+								stack[SP] = 0;
+							 break;
+					case 12: //operation GTR
+							 SP--;
+							 if (stack[SP] > stack[SP+1])
+								stack[SP] = 1;
+							 else
+								stack[SP] = 0;
+						   	 break;
+					case 13: //operation GEQ
+							 SP--;
+							 if (stack[SP] >= stack[SP+1])
+								stack[SP] = 1;
+							 else
+								stack[SP] = 0;
+							 break;
+				}
+				break;
+		case 3: //operation LOD
+				SP++;
+				stack[SP] = stack[base(IR.l, BP)+IR.m];
+				break;
+		case 4: //operation STO
+				stack[base(IR.l, BP)+IR.m] = stack[SP];
+				SP--;
+				break;
+		case 5: //operation CAL
+				stack[SP+1] = base(IR.l, BP);
+				stack[SP+2] = BP;
+				stack[SP+3] = PC;
+				BP = SP + 1;
+				PC = IR.m;
+				*newARFlag = 1;
+				break;
+		case 6: //operation INC
+				if (*newARFlag == 1) { //This indicates that a CAL was executed last step and that a new activation record has been made
+					//This loop is used to iterate through the whereToPlace array. If there is already j active brackets (or new ARs) in the stack, then j will increment until there
+					//is an empty index (where 0 is held) so that it may mark the index where the next bracket should be placed in the stack.
+					for (j = 0; j < 667; j++) { 
+						if (whereToPlace[j] == 0) 
+							whereToPlace[j] = SP + 1;
+					}
+					j = 0; //reset j to 0 so that below when the stack is printed, it will look to place the first bracket at the index specified at whereToPlace[0]. 
+				}
+				SP = SP + IR.m;
+				break;
+		case 7: //operation JMP
+				PC = IR.m;
+				break;
+		case 8: //operation JPC
+				if (stack[SP] == 0)
+					PC = IR.m;
+				SP--;
+				break;
+		case 9: //operation OUT
+				printf("%d\n", stack[SP]);
+				SP--;
+				break;
+		case 10: //operation IN
+				 SP++;
+				 printf("Enter a value to read in: ");
+				 scanf("%d", stack[SP]);
+				 printf("\n");
+				 break;
 	}
-}
-
-void executeCycle (instruction *IR, int instructionCount, int *registerFile, char *opCodeString) {
-	int halt = 0;
-	int i = 0;
-	for (i = 0; i < instructionCount; i++) {
-		switch (IR[i].op) {
-			//LIT R, 0, M
-			case 1: registerFile[IR[i].r] = IR[i].m;
-					break;
-			//RTN 0, 0, 0
-			case 2: SP = BP - 1;
-					BP = stack[SP + 3];
-					PC = stack[SP + 4];
-					break;
-			//LOD R, L, M
-			case 3: registerFile[IR[i].r] = stack[base(IR[i].l, BP) + IR[i].m];
-					break;
-			//STO R, L, M
-			case 4: stack[base(IR[i].l, BP) + IR[i].m] = registerFile[IR[i].r];
-					break;
-			//CAL 0, L, M
-			case 5: stack[SP + 1] = 0;						//space to return value
-					stack[SP + 2] = base(IR[i].l, BP);		//static link (SL)
-					stack[SP + 3] = BP;						//dynamic link (DL)
-					stack[SP + 4] = PC;						//return address (RA)
-					BP = SP + 1;
-					PC = IR[i].m;
-					break;
-			//INC 0, 0, M
-			case 6: SP = SP + IR[i].m;
-					break;
-			//JMP 0, 0, M
-			case 7: PC = IR[i].m;
-					break;
-			//JPC R, 0, M
-			case 8: if (registerFile[IR[i].r] == 0)
-						PC = IR[i].m;
-					break;
-			//SIO R, 0, 1
-			case 9: printf("%d", IR[i].r);
-					break;
-			//SIO R, 0, 2
-			case 10: scanf("%d", registerFile[IR[i].r]);
-					 break;
-			//SIO R, 0, 3
-			case 11: halt = 1;
-					 break;
-			//NEG
-			case 12: registerFile[IR[i].r] = registerFile[IR[i].l];
-					 break;
-			//ADD
-			case 13: registerFile[IR[i].r] = registerFile[IR[i].l] + registerFile[IR[i].m];
-					 break;
-			//SUB
-			case 14: registerFile[IR[i].r] = registerFile[IR[i].l] - registerFile[IR[i].m];
-					 break;
-			//MUL
-			case 15: registerFile[IR[i].r] = registerFile[IR[i].l] * registerFile[IR[i].m]; 
-					 break;
-			//DIV
-			case 16: registerFile[IR[i].r] = registerFile[IR[i].l] / registerFile[IR[i].m];
-					 break;
-			//ODD
-			case 17: registerFile[IR[i].r] = (registerFile[IR[i].r] % 2);
-					 break;
-			//MOD
-			case 18: registerFile[IR[i].r] = registerFile[IR[i].l] % registerFile[IR[i].m];
-					 break;
-			//EQL
-			case 19: registerFile[IR[i].r] = (registerFile[IR[i].l] == registerFile[IR[i].m]);
-					 break;
-			//NEQ
-			case 20: registerFile[IR[i].r] = (registerFile[IR[i].l] != registerFile[IR[i].m]);
-					 break;
-			//LSS
-			case 21: registerFile[IR[i].r] = (registerFile[IR[i].l] < registerFile[IR[i].m]);
-					 break;
-			//LEQ
-			case 22: registerFile[IR[i].r] = (registerFile[IR[i].l] <= registerFile[IR[i].m]);
-					 break;
-			//GTR
-			case 23:  registerFile[IR[i].r] = (registerFile[IR[i].l] > registerFile[IR[i].m]);
-					 break;
-			//GEO
-			case 24: registerFile[IR[i].r] = (registerFile[IR[i].l] >= registerFile[IR[i].m]);
-					 break;
-		}
-		
-		setAssemblyInstructions (IR, instructionCount, opCodeString, i);
-		printf("%d %s %d %d %d %d %d %d | %d %d %d %d %d %d \n", i, opCodeString, IR[i].r, IR[i].l, IR[i].m, PC, BP, SP, stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
-	}
-}
-
-void fetchCycle (instruction *IR, int instructionCount) {
-	int i = 0;
-
-	//loop through each instruction in the input file storing each into the instruction register and then
-	//transfering to the toBeExecuted array.
-	for (i = 0; i < instructionCount; i++) {
-		scanf("%d", &IR[i].op);
-		scanf("%d", &IR[i].r);
-		scanf("%d", &IR[i].l);
-		scanf("%d", &IR[i].m);
-	}
-}
-
-void printIRArray (instruction *IR, int instructionCount) {
-	int i = 0;
 	
-	for (i = 0; i < instructionCount; i++) {
-		printf("%d ", IR[i].op);
-		printf("%d ", IR[i].r);
-		printf("%d ", IR[i].l);
-		printf("%d ", IR[i].m);
-		printf("\n");
+	fprintf(outfile, "%-4d %-4s %-4d %-5d ", IR.instructionNum, IR.opString, IR.l, IR.m);
+	fprintf(outfile, "%-5d %-5d %-5d ", PC, BP, SP);
+	int i; //looping variable
+	for (i = 0; i <= SP; i++) {
+		if (i == whereToPlace[j] && whereToPlace[j] != 0) { //This if statement will place a bracket in its correct location before a new AR during the time when INC is executed.
+			fprintf(outfile, "| ");
+			*newARFlag = 0; //it will then reset newARFlag to 0
+			j++; //the j'th bracket has been placed in the stack at the correct location. As the for loop iterates it will look to place the next bracket there is one to place.
+		}
+		fprintf(outfile, "%d ", stack[i]);
 	}
+	fprintf(outfile, "\n");
 }
 
-int base (l, base) { //l stands for L in the instruction format.
-	int b1; //find base L levels down
-	b1 = base;
-	while (1 > 0) {
-		b1 = stack[b1 + 1];
-		l--;
+
+void fetchStep (instruction *IRTrace, instruction *IR) {
+	IR->op = IRTrace[PC].op;
+	IR->l = IRTrace[PC].l;
+	IR->m = IRTrace[PC].m;
+	strcpy(IR->opString, IRTrace[PC].opString);
+	IR->instructionNum = IRTrace[PC].instructionNum;
+}
+
+void fillOPStrings(instruction *IRTrace, int i) {
+	//this switch fills the opCodeString
+	switch (IRTrace[i].op) {
+		case 1: //opCodeString = "LIT";
+				strcpy(IRTrace[i].opString, "lit");
+				break;
+		case 2: //opCodeString = "OPR"
+				strcpy(IRTrace[i].opString, "opr");
+				break;
+		case 3: //opCodeString = "LOD";
+				strcpy(IRTrace[i].opString, "lod");
+				break;
+		case 4: //opCodeString = "STO";
+				strcpy(IRTrace[i].opString, "sto");
+				break;
+		case 5: //opCodeString = "CAL";
+				strcpy(IRTrace[i].opString, "cal");
+				break;
+		case 6: //opCodeString = "INC";
+				strcpy(IRTrace[i].opString, "inc");
+				break;
+		case 7: //opCodeString = "JMP";
+				strcpy(IRTrace[i].opString, "jmp");
+				break;
+		case 8: //opCodeString = "JPC";
+				strcpy(IRTrace[i].opString, "jpc");
+				break;
+		case 9: //opCodeString = "OUT";
+				strcpy(IRTrace[i].opString, "out");
+				break;
+		case 10: //opCodeString = "IN";
+				 strcpy(IRTrace[i].opString, "in");
+				 break;
 	}
-	return b1;
 }
 
 int countIntsInFile () {
@@ -293,12 +302,12 @@ int countIntsInFile () {
 	int index = 0;
 	
 	FILE* fp;
-	fp = fopen ("C:/Users/Miles/Desktop/Program Files/C Programs/P-Machine/input.txt", "r");
+	fp = fopen ("C:\\Users\\Miles\\Desktop\\P-MACHINE\\HW1\\mcode.txt", "r");
 	//fp = fopen(cmd.argv[1], "r");
 	
 	//check to make sure the file exists.
 	if (fp == NULL) {
-		printf("The file could not be opened, make sure the file path is written correctly.");
+		printf("Error, unable to read the file...");
 	} else {
 		
 		//printf("c: %d \n", c);
@@ -334,5 +343,15 @@ int countIntsInFile () {
 
 	fclose(fp);
 	return numOfInts;
+}
+
+int base(int l, int base) {
+	int b1; //find base L levels down
+	b1 = base;
+	while (l > 0) {
+		b1 = stack[b1];
+		l--;
+	}
+	return b1;
 }
 
